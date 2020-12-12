@@ -32,6 +32,8 @@ newaliases_path = /usr/bin/newaliases
 mailq_path = /usr/bin/mailq
 queue_directory = /var/spool/postfix
 mail_owner = postfix
+
+# Core mail-handling logic to handle multiple pools:
 # virtual-alias-maps-ldap-reserved.cf redirects {abuse,webmaster,etc.}@ -> root
 # For domains on this pool, virtual-alias-maps-ldap.cf does foo@bar.com -> user+foo@localhost
 # For domains on another pool, virtual-alias-maps-relay-ldap.cf does foo@bar.com -> foo!bar.com@[18.4.86.22]
@@ -40,9 +42,16 @@ mail_owner = postfix
 # Native routing does foo@scripts.mit.edu -> foo
 # smtp_generic_map rewrites foo!scripts.mit.edu@[18.4.86.22] -> foo@scripts.mit.edu after the transport is selected
 # To override, put something in /etc/postfix/force_pool
+
+# Virtual alias domains:
+# - Exclude generic VIPs and ones for this pool (in $mydestination above)
+# - Also exclude this machine, by hostname and as localhost (also in $mydestination above)
+# - Handle anything in force_pool specially
+# - Then check LDAP for any vhosts (besides scripts.mit.edu) whose pool IP is on this machine
 virtual_alias_domains = {% for vip in vips | rejectattr('type', 'defined') %}{% if (vip.codename|default(ansible_lsb.codename) == ansible_lsb.codename) %}!{{ vip.host }}, !{{ vip.host | replace('.mit.edu', '') }}, {% endif %}{% endfor %}!$myhostname, !localhost, pcre:/etc/postfix/force_pool, ldap:/etc/postfix/virtual-alias-domains-ldap.cf
 virtual_alias_maps = ldap:/etc/postfix/virtual-alias-maps-ldap-reserved.cf, ldap:/etc/postfix/virtual-alias-maps-ldap.cf, ldap:/etc/postfix/virtual-alias-maps-relay-ldap.cf, pipemap:{pcre:/etc/postfix/pass-scripts.mit.edu,ldap:/etc/postfix/virtual-alias-maps-relay-user-ldap.cf}, pipemap:{pcre:/etc/postfix/pass-scripts.mit.edu-suffix,ldap:/etc/postfix/virtual-alias-maps-relay-user-suffix-ldap.cf}
 smtp_generic_maps = pcre:/etc/postfix/generic-strip-pool
+
 data_directory = /var/lib/postfix
 authorized_flush_users = fail
 authorized_mailq_users = /etc/postfix/mailq_users
